@@ -8,12 +8,13 @@
 // Notes: overarching lesson - associate a property not with a cell but with our data. Check mark should be associated with the task, not the cell
 
 import UIKit
+import CoreData
 
 class TodoListViewController: UITableViewController {
     
     var itemArray = [Item]()
     
-    let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items.plist")
+    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     
     let defaults = UserDefaults.standard
     
@@ -21,20 +22,22 @@ class TodoListViewController: UITableViewController {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
         
+        // Path to where data is being saved in app
+        print(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask))
         
-        print(dataFilePath)
         
-        let newItem = Item()
-        newItem.title = "Find Mike"
-        itemArray.append(newItem)
         
-        let newItem2 = Item()
-        newItem2.title = "Buy Eggos"
-        itemArray.append(newItem2)
-        
-        let newItem3 = Item()
-        newItem3.title = "Destroy Demogorgon"
-        itemArray.append(newItem3)
+//        let newItem = Item()
+//        newItem.title = "Find Mike"
+//        itemArray.append(newItem)
+//
+//        let newItem2 = Item()
+//        newItem2.title = "Buy Eggos"
+//        itemArray.append(newItem2)
+//
+//        let newItem3 = Item()
+//        newItem3.title = "Destroy Demogorgon"
+//        itemArray.append(newItem3)
         
         loadItems()
 //        if let items = defaults.array(forKey: "TodoListArray") as? [Item] {
@@ -73,8 +76,6 @@ class TodoListViewController: UITableViewController {
     // These get fired whenever we click on any cell in tableview
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        print(itemArray[indexPath.row].title)
-        print(itemArray[indexPath.row].done)
         
         // can be refactored to: itemArray[indexPath.row].done = !itemArray[indexPath.row].done
         if itemArray[indexPath.row].done == false {
@@ -82,7 +83,11 @@ class TodoListViewController: UITableViewController {
         } else {
             itemArray[indexPath.row].done = false
         }
-        
+
+        // Delete when selected
+//        context.delete(itemArray[indexPath.row])
+//        itemArray.remove(at: indexPath.row)
+//
         saveItems()
         
         tableView.deselectRow(at: indexPath, animated: true)
@@ -102,8 +107,11 @@ class TodoListViewController: UITableViewController {
         let action = UIAlertAction(title: "Add Item", style: .default) { (action) in
             // what will happen when user clicks add item in UI alert
             
-            let newItem = Item()
+            // Within parantheses = gives access to AppDelegate as an object, rather than a class (which allows us to access its properties)
+            
+            let newItem = Item(context: self.context)
             newItem.title = textField.text!
+            newItem.done = false
             
             self.itemArray.append(newItem)
             
@@ -129,13 +137,13 @@ class TodoListViewController: UITableViewController {
     //MARK: - Model Manuipulation Methods
     
     func saveItems() {
-        let encoder = PropertyListEncoder()
-    
+        // Inside this method, we need to be able to commit our contents to permanent storage inside our persistent container
+        
+        
         do {
-        let data = try encoder.encode(itemArray)
-        try data.write(to: dataFilePath!)
+            try context.save()
         } catch {
-        print("Error encoding item array, \(error)")
+            print("Error saving context \(error)")
         }
         
         
@@ -143,15 +151,52 @@ class TodoListViewController: UITableViewController {
         self.tableView.reloadData()
     }
     
-    func loadItems() {
-        if let data = try? Data(contentsOf: dataFilePath!) {
-            let decoder = PropertyListDecoder()
-            do {
-                itemArray = try decoder.decode([Item].self, from: data)
-            } catch {
-                print("Error decoding item array, \(error)")
+    func loadItems(with request : NSFetchRequest<Item> = Item.fetchRequest()) {
+        // in plain english, request is of type NSFetchRequest which should fetch an array of Items, and if when we call this function  and we don't provide a parameter for the request, then use default value of Item.fetchRequest()
+        
+        do {
+            itemArray = try context.fetch(request)
+        } catch {
+            print("Error fetching data from context: \(error)")
+        }
+        
+        tableView.reloadData()
+    }
+    
+
+    
+}
+
+//MARK: - Search Bar Methods
+extension TodoListViewController : UISearchBarDelegate {
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        
+        let request : NSFetchRequest<Item> = Item.fetchRequest()
+        
+        request.predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchBar.text!)
+        
+        // Notice that this property asks for plural sortDescriptors (e.g. an array of sortDescriptors). We are only providing one; that's okay
+        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        
+        loadItems(with: request)
+
+    }
+    
+    // gets triggered anytime text in searchbar changes
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        
+        // if no text in searchbar
+        if searchBar.text!.count == 0 {
+            loadItems()
+            
+            // Object that manages/prioritizes execution of work items to threads. Main is where you should be updating UI elements
+            DispatchQueue.main.async {
+                // Search bar should no longer be selected
+                searchBar.resignFirstResponder()
             }
+            
+            
+            
         }
     }
 }
-
